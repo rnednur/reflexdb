@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ReflexDB | Emerging Intelligence</title>
+<style>
+:root{font-family:Inter,system-ui,Arial,sans-serif;color:#172334;background:#f6f8fb}
+*{box-sizing:border-box}body{margin:0}header{background:white;border-bottom:1px solid #dfe6ed;padding:20px 28px;display:flex;justify-content:space-between;align-items:center}
+h1{font-size:23px;margin:0}h2{font-size:17px;margin:0 0 15px}small,.muted{color:#64748b}
+main{max-width:1440px;margin:auto;padding:24px;display:grid;gap:20px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.card{background:white;border:1px solid #e1e7ef;border-radius:12px;padding:20px;min-width:0}
+.stat{font-size:30px;font-weight:750;margin:8px 0}
+.layout{display:grid;grid-template-columns:1.15fr 1fr;gap:20px}
+#grid{display:grid;grid-template-columns:repeat(18,minmax(0,1fr));gap:3px;max-width:700px}
+.cell{aspect-ratio:1;border-radius:3px;background:#e3edf4;cursor:pointer;min-width:0}
+.cell:hover{outline:2px solid #2b68b8}
+.row{padding:13px 0;border-bottom:1px solid #e8edf2;cursor:pointer}
+.row:hover{background:#f5f8fd}
+.rowhead{display:flex;justify-content:space-between;gap:10px}
+.score{background:#fff1e3;color:#a6530e;border-radius:6px;padding:3px 8px;font-weight:700}
+.bar{height:7px;background:#edf1f6;border-radius:8px;margin:8px 0}
+.fill{height:100%;background:#e49a57;border-radius:8px}
+#trend{display:flex;align-items:end;gap:2px;height:115px;padding-top:12px;border-bottom:1px solid #ccd6e0}
+.trendbar{background:#8fa8c3;flex:1;min-width:1px}
+#detail{white-space:pre-wrap;font-size:13px;line-height:1.7}
+button{background:#e8eff8;color:#244c76;border:0;padding:7px 11px;border-radius:7px;cursor:pointer}
+@media(max-width:900px){.layout,.stats{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.layout,.stats{grid-template-columns:1fr}header{display:block}}
+</style></head>
+<body><header><div><h1>ReflexDB <span style="color:#718198;font-weight:400">/ Emerging Intelligence</span></h1>
+<small>Contextual network anomaly discovery · Demonstration environment</small></div>
+<div><button onclick="refresh()">Refresh</button> <small id="stamp">Loading…</small></div></header>
+<main>
+<section class="stats">
+<div class="card"><small>Active episodes</small><div class="stat" id="count">—</div></div>
+<div class="card"><small>Emerging</small><div class="stat" id="emerging">—</div></div>
+<div class="card"><small>H3-like grid cells in episodes</small><div class="stat" id="affected">—</div></div>
+<div class="card"><small>Latest anomaly candidates</small><div class="stat" id="candidates">—</div></div>
+</section>
+<div class="layout">
+<section class="card"><h2>Geographic footprint <small>(synthetic grid)</small></h2>
+<div id="grid"></div><p class="muted" style="font-size:12px">Orange: active episode footprint · Blue: other cells. This is NOT a true H3 map.</p></section>
+<section class="card"><h2>Prioritized episodes</h2><div id="episodes"></div></section>
+</div>
+<div class="layout">
+<section class="card"><h2>Candidate activity · last 24 hours</h2><div id="trend"></div></section>
+<section class="card"><h2>Selected episode</h2><div id="detail" class="muted">Select an episode to inspect its evidence and history.</div></section>
+</div>
+<p class="muted" style="font-size:12px">Demo limitations: scores are not calibrated, and exposure is not deduplicated subscriber impact. StarRocks and real H3 adjacency are not connected.</p>
+</main>
+<script>
+let data;
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function render(){
+const es=data.episodes||[], t=data.timeline||[],cells=data.cells||[];
+document.getElementById('count').textContent=es.length;
+document.getElementById('emerging').textContent=es.filter(e=>e.lifecycle_state==='EMERGING').length;
+document.getElementById('affected').textContent=new Set(es.flatMap(e=>e.cells)).size;
+document.getElementById('candidates').textContent=t.at(-1)?.candidate_count??0;
+document.getElementById('stamp').textContent=data.metadata.latest_hour;
+const affected=new Set(es.flatMap(e=>e.cells));
+const w=Math.max(...cells.map(c=>c.x??0))+1;
+const grid=document.getElementById('grid');grid.style.gridTemplateColumns='repeat('+w+',minmax(0,1fr))';
+grid.innerHTML='';
+cells.sort((a,b)=>(a.y-b.y)||(a.x-b.x)).forEach(c=>{
+const el=document.createElement('div');el.className='cell';
+el.style.background=affected.has(c.h3_id)?'#e6a068':'#cbdde9';
+el.title=c.h3_id+' | Throughput '+c.throughput+' Mbps | SINR '+c.sinr;
+grid.appendChild(el)});
+document.getElementById('episodes').innerHTML=es.map(e=>'<div class="row" data-id="'+esc(e.episode_id)+'"><div class="rowhead"><strong>'+esc(e.episode_id)+'</strong><span class="score">'+e.emerging_score+'/100</span></div><small>'+esc(e.lifecycle_state)+' · '+e.affected_h3_count+' cells · '+esc(e.evidence.join(', '))+'</small><div class="bar"><div class="fill" style="width:'+e.emerging_score+'%"></div></div></div>').join('')||'<p class="muted">No active episodes.</p>';
+document.querySelectorAll('.row').forEach(el=>el.addEventListener('click',()=>select(el.dataset.id)));
+const mx=Math.max(1,...t.map(x=>x.candidate_count));
+document.getElementById('trend').innerHTML=t.map(x=>'<div class="trendbar" title="'+esc(x.hour_ts)+' · '+x.candidate_count+'" style="height:'+Math.max(2,100*x.candidate_count/mx)+'%"></div>').join('');
+if(es.length)select(es[0].episode_id)
+}
+function select(id){
+const e=data.episodes.find(x=>x.episode_id===id);
+const h=data.history.filter(x=>x.episode_id===id);
+document.getElementById('detail').textContent=JSON.stringify({episode_id:e.episode_id,state:e.lifecycle_state,first_seen:e.first_seen,last_seen:e.last_seen,score:e.emerging_score,affected_cells:e.affected_h3_count,growth_pct:e.growth_pct,signals:e.evidence,exposure_proxy_not_deduplicated:e.exposure_proxy,hourly_history:h.slice(-8)},null,2)
+}
+async function refresh(){try{const r=await fetch('/api/overview');if(!r.ok)throw Error('HTTP '+r.status);data=await r.json();render()}catch(e){document.getElementById('stamp').textContent='Load failed: '+e.message}}
+refresh();
+</script></body></html>
